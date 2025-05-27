@@ -28,19 +28,20 @@ ls(char *path)
   char buf[512], *p;
   int fd;
   struct dirent de;
-  struct stat st;
+  struct stat st;//
 
+//打开文件
   if((fd = open(path, 0)) < 0){
     fprintf(2, "ls: cannot open %s\n", path);
     return;
   }
-
+//获取文件信息
   if(fstat(fd, &st) < 0){
     fprintf(2, "ls: cannot stat %s\n", path);
     close(fd);
     return;
   }
-
+//文件类型
   switch(st.type){
   case T_FILE:
     printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
