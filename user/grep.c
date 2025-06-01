@@ -8,6 +8,7 @@ char buf[1024];
 int match(char*, char*);
 
 void
+//从文件里面找pattern字符串
 grep(char *pattern, int fd)
 {
   int n, m;
@@ -28,7 +29,7 @@ grep(char *pattern, int fd)
     }
     if(m > 0){
       m -= p - buf;
-      memmove(buf, p, m);
+      memmove(buf, p, m);//把p后面的字符移到buf开头 移动m个字节
     }
   }
 }
@@ -43,10 +44,10 @@ main(int argc, char *argv[])
     fprintf(2, "usage: grep pattern [file ...]\n");
     exit(1);
   }
-  pattern = argv[1];
+  pattern = argv[1];//要查的文本 存在pattern中
 
   if(argc <= 2){
-    grep(pattern, 0);
+    grep(pattern, 0);// 如果只传入两个参数 从标准输入读
     exit(0);
   }
 
