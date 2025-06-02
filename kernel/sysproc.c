@@ -6,6 +6,39 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+//将一个struct sysinfo复制回用户空间
+uint64
+sys_sysinfo(void)
+{
+  //获取用户传入的结构体指针
+  struct sysinfo info;
+  //获取空闲内存
+  freebytes(&info.freemem);
+  //获取进程数量
+  procnum(&info.nproc);
+  //获取平均负载
+  procmemsize(&info.memsize);
+
+  //获取用户虚拟地址
+  uint64 dstaddr;
+  argaddr(0,&dstaddr);
+
+  if(copyout(myproc()->pagetable, dstaddr, (char *)&info, sizeof(info)) < 0)//将内核空间的数据 复制到 用户空间
+      return -1;
+  return 0;
+}
+
+//当前进程的系统调用获取trace 的掩码
+uint64
+sys_trace(void)
+{
+  int mask;
+  if (argint(0, &mask) < 0)
+    return -1;
+  myproc()->trace_mask = mask;
+  return 0;
+}
 
 uint64
 sys_exit(void)

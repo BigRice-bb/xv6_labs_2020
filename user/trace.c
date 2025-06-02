@@ -14,13 +14,15 @@ main(int argc, char *argv[])
     exit(1);
   }
 
+  //用户空间吧mask 传给了内核
   if (trace(atoi(argv[1])) < 0) {
     fprintf(2, "%s: trace failed\n", argv[0]);
     exit(1);
   }
   
   for(i = 2; i < argc && i < MAXARG; i++){
-    nargv[i-2] = argv[i];
+    nargv[i-2] = argv[i];  //argv[2] 是command 
+    //这条命令把command放进nargv中
   }
   exec(nargv[0], nargv);
   exit(0);

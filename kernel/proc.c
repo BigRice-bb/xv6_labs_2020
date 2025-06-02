@@ -21,6 +21,37 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+void
+procnum(uint64* dst)
+{
+  *dst=0;
+  struct proc*p;//用于遍历proc[NPROC];
+  for(p=proc;p<&proc[NPROC];p++)
+  {
+    if(p->state!=UNUSED)
+    {
+      (*dst)++;
+    }
+  }
+}
+void
+procmemsize(uint64* dst)
+{
+  *dst=0;
+  int i=0;
+  struct proc*p;//用于遍历proc[NPROC];
+  for(p=proc;p<&proc[NPROC];p++)
+  {
+    if(p->state!=UNUSED)
+    {
+      (*dst)+=p->sz;
+      i++;
+    }
+  }
+  (*dst)/=i;
+}
+
+
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -126,6 +157,9 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  //初始化trace_mask
+  p->trace_mask = 0;
 
   return p;
 }
@@ -296,6 +330,9 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&np->lock);
+
+  //子进程的trace mask is the same as the parent's.
+  np->trace_mask = p->trace_mask;
 
   return pid;
 }

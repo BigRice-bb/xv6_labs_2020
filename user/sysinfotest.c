@@ -119,6 +119,17 @@ void testproc() {
       exit(1);
   }
 }
+void
+testsz() {
+  struct sysinfo info;
+  
+  if (sysinfo(&info) < 0) {
+    printf("FAIL: sysinfo failed\n");
+    exit(1);
+  }
+  printf("average size= %d  \n",info.memsize);
+
+}
 
 int
 main(int argc, char *argv[])
@@ -127,6 +138,7 @@ main(int argc, char *argv[])
   testcall();
   testmem();
   testproc();
+  //testsz();
   printf("sysinfotest: OK\n");
   exit(0);
 }
