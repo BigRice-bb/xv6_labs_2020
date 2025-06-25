@@ -36,3 +36,6 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+#添加alarm系统调用入口
+entry("sigalarm");
+entry("sigreturn");

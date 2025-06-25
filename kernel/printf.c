@@ -25,6 +25,21 @@ static struct {
 
 static char digits[] = "0123456789abcdef";
 
+//回溯
+//在printf中调用 可以打印出错误发生位置
+void backtrace(void)
+{
+  uint64 fp = r_fp();//第一步获取fp寄存器
+  printf("backtrace:\n");
+  while (PGROUNDUP(fp)-PGROUNDDOWN(fp)==PGSIZE)//判断fp在内核栈页内
+  {
+    uint64 ra = *(uint64 *)(fp - 8);//获取fp-8处的值 即ra
+    printf("%p\n", ra);
+    fp = *(uint64 *)(fp-16);//获取fp-16处的值 即fp
+  }
+  //printf("end of backtrace\n");
+}
+
 static void
 printint(int xx, int base, int sign)
 {
@@ -117,11 +132,15 @@ printf(char *fmt, ...)
 void
 panic(char *s)
 {
+
+  backtrace();//打印回溯
+
   pr.locking = 0;
   printf("panic: ");
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+
   for(;;)
     ;
 }

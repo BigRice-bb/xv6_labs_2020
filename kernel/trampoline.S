@@ -75,16 +75,16 @@ uservec:
 
         # restore kernel page table from p->trapframe->kernel_satp
         ld t1, 0(a0)
-        csrw satp, t1
+        csrw satp, t1   #切换内核页表
         sfence.vma zero, zero
 
         # a0 is no longer valid, since the kernel page
         # table does not specially map p->tf.
 
         # jump to usertrap(), which does not return
-        jr t0
+        jr t0   #跳转到陷阱处理函数 usertrap() 开始执行  
 
-.globl userret
+.globl userret  #从trap.c中的usertrapret跳回来
 userret:
         # userret(TRAPFRAME, pagetable)
         # switch from kernel to user.
@@ -92,8 +92,8 @@ userret:
         # a0: TRAPFRAME, in user page table.
         # a1: user page table, for satp.
 
-        # switch to the user page table.
-        csrw satp, a1
+        # switch to the user page table. 切换内核页表  从trapframe恢复所有用户寄存器
+        csrw satp, a1   
         sfence.vma zero, zero
 
         # put the saved user a0 in sscratch, so we

@@ -61,6 +61,10 @@ sys_sleep(void)
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
+  
+  //在sys_sleep中调用backtrace
+  backtrace();//打印回溯
+
   ticks0 = ticks;
   while(ticks - ticks0 < n){
     if(myproc()->killed){

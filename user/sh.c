@@ -141,32 +141,34 @@ getcmd(char *buf, int nbuf)
   return 0;
 }
 
+//shell用户交互程序
 int
 main(void)
 {
-  static char buf[100];
-  int fd;
+  static char buf[100];//缓冲区
+  int fd;//文件描述符
 
   // Ensure that three file descriptors are open.
-  while((fd = open("console", O_RDWR)) >= 0){
-    if(fd >= 3){
-      close(fd);
+  //反复打开console文件，直到分配到三个文件描述符
+  while((fd = open("console", O_RDWR)) >= 0){//打开console文件
+    if(fd >= 3){//如果文件描述符大于3
+      close(fd);//关闭文件描述符
       break;
-    }
+    }//正确文件描述符应该是0 stdin 1 stdout 2 stderr
   }
 
   // Read and run input commands.
-  while(getcmd(buf, sizeof(buf)) >= 0){
-    if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+  while(getcmd(buf, sizeof(buf)) >= 0){//输出$ 并读取用户输入的一行命令
+    if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){//如果命令是cd
       // Chdir must be called by the parent, not the child.
-      buf[strlen(buf)-1] = 0;  // chop \n
-      if(chdir(buf+3) < 0)
-        fprintf(2, "cannot cd %s\n", buf+3);
-      continue;
+      buf[strlen(buf)-1] = 0;  // 去掉换行符
+      if(chdir(buf+3) < 0)//判断cd 后的路径是否存在
+        fprintf(2, "cannot cd %s\n", buf+3);//如果切换失败，输出错误信息
+      continue;//继续读取下一行命令
     }
-    if(fork1() == 0)
-      runcmd(parsecmd(buf));
-    wait(0);
+    if(fork1() == 0)//创建子进程
+      runcmd(parsecmd(buf));//解析并执行命令
+    wait(0);//等待子进程结束
   }
   exit(0);
 }

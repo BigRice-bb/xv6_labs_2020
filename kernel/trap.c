@@ -30,8 +30,8 @@ trapinithart(void)
 }
 
 //
-// handle an interrupt, exception, or system call from user space.
-// called from trampoline.S
+// handle an interrupt-中断, exception-异常, or system call-系统调用 from user space.
+// called from trampoline.S  来自 trampoline.S 文件  用户态陷入内核态执行陷阱处理函数
 //
 void
 usertrap(void)
@@ -51,7 +51,7 @@ usertrap(void)
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
-    // system call
+    // system call  !!!!!!!!
 
     if(p->killed)
       exit(-1);
@@ -64,10 +64,11 @@ usertrap(void)
     // so don't enable until done with those registers.
     intr_on();
 
-    syscall();
-  } else if((which_dev = devintr()) != 0){
+    syscall();//执行系统调用函数
+  } else if((which_dev = devintr()) != 0){//处理外部设备中断  包括时钟中断
     // ok
   } else {
+    // 其他异常情况  打印错误信息,终止异常
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -91,39 +92,31 @@ usertrapret(void)
 {
   struct proc *p = myproc();
 
-  // we're about to switch the destination of traps from
-  // kerneltrap() to usertrap(), so turn off interrupts until
-  // we're back in user space, where usertrap() is correct.
+  // 1. 关中断
   intr_off();
 
-  // send syscalls, interrupts, and exceptions to trampoline.S
+  // 2. 重新设置陷阱向量
   w_stvec(TRAMPOLINE + (uservec - trampoline));
 
-  // set up trapframe values that uservec will need when
-  // the process next re-enters the kernel.
-  p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  // 3. 为下一次陷阱准备好内核信息
+  p->trapframe->kernel_satp = r_satp();
+  p->trapframe->kernel_sp = p->kstack + PGSIZE;
   p->trapframe->kernel_trap = (uint64)usertrap;
-  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+  p->trapframe->kernel_hartid = r_tp();
 
-  // set up the registers that trampoline.S's sret will use
-  // to get to user space.
-  
-  // set S Previous Privilege mode to User.
+  // 4. 设置返回用户模式所需的状态  -- 设置sstatus寄存器
   unsigned long x = r_sstatus();
-  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
-  x |= SSTATUS_SPIE; // enable interrupts in user mode
+  x &= ~SSTATUS_SPP; // 清除SPP位，表示下一特权级是User
+  x |= SSTATUS_SPIE; // 设置SPIE位，允许用户态响应中断
   w_sstatus(x);
 
-  // set S Exception Program Counter to the saved user pc.
-  w_sepc(p->trapframe->epc);
+  // 5. 设置返回地址
+  w_sepc(p->trapframe->epc); 
 
-  // tell trampoline.S the user page table to switch to.
+  // 6. 准备用户页表 
   uint64 satp = MAKE_SATP(p->pagetable);
 
-  // jump to trampoline.S at the top of memory, which 
-  // switches to the user page table, restores user registers,
-  // and switches to user mode with sret.
+  // 7.通过函数指针 跳转到trampoline.S中的userret  -- 跳转到用户态
   uint64 fn = TRAMPOLINE + (userret - trampoline);
   ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
 }
@@ -160,11 +153,11 @@ kerneltrap()
 }
 
 void
-clockintr()
+clockintr()//时钟中断处理函数
 {
-  acquire(&tickslock);
-  ticks++;
-  wakeup(&ticks);
+  acquire(&tickslock);//获取tickslock锁
+  ticks++;//ticks加1
+  wakeup(&ticks);//唤醒ticks
   release(&tickslock);
 }
 
@@ -200,17 +193,17 @@ devintr()
       plic_complete(irq);
 
     return 1;
-  } else if(scause == 0x8000000000000001L){
+  } else if(scause == 0x8000000000000001L){//时钟中断
     // software interrupt from a machine-mode timer interrupt,
     // forwarded by timervec in kernelvec.S.
 
     if(cpuid() == 0){
-      clockintr();
+      clockintr();//时钟中断处理函数
     }
     
     // acknowledge the software interrupt by clearing
     // the SSIP bit in sip.
-    w_sip(r_sip() & ~2);
+    w_sip(r_sip() & ~2); //清除软件中断标志
 
     return 2;
   } else {

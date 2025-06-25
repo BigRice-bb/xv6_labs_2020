@@ -42,11 +42,11 @@ extern struct cpu cpus[NCPU];
 // return-to-user path via usertrapret() doesn't return through
 // the entire kernel call stack.
 struct trapframe {
-  /*   0 */ uint64 kernel_satp;   // kernel page table
-  /*   8 */ uint64 kernel_sp;     // top of process's kernel stack
-  /*  16 */ uint64 kernel_trap;   // usertrap()
-  /*  24 */ uint64 epc;           // saved user program counter
-  /*  32 */ uint64 kernel_hartid; // saved kernel tp
+  /*   0 */ uint64 kernel_satp;   // kernel page table当前内核页表的地址。
+  /*   8 */ uint64 kernel_sp;     // top of process's kernel stack当前进程的内核栈顶地址。
+  /*  16 */ uint64 kernel_trap;   // usertrap() 陷阱处理函数地址。
+  /*  24 */ uint64 epc;           // saved user program counter 保存的用户程序计数器。
+  /*  32 */ uint64 kernel_hartid; // saved kernel tp 保存的内核线程ID。
   /*  40 */ uint64 ra;
   /*  48 */ uint64 sp;
   /*  56 */ uint64 gp;
