@@ -46,13 +46,15 @@ test0()
   printf("test0 start\n");
   count = 0;
   sigalarm(2, periodic);
+  //每隔两个滴答，调用periodic->count+1 打印alarm  返回
+  //打印. 等待定时中断
   for(i = 0; i < 1000*500000; i++){
     if((i % 1000000) == 0)
-      write(2, ".", 1);
+      write(2, ".", 1);//fd=2  代表标准错误
     if(count > 0)
       break;
   }
-  sigalarm(0, 0);
+  sigalarm(0, 0);//关闭定时中断
   if(count > 0){
     printf("test0 passed\n");
   } else {
