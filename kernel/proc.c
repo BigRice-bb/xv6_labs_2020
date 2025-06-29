@@ -93,7 +93,7 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-
+  //遍历进程数组找到空闲进程
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
@@ -103,17 +103,23 @@ allocproc(void)
     }
   }
   return 0;
-
+//为空闲进程分配pid 和 参数初始化
 found:
   p->pid = allocpid();
 
-  // Allocate a trapframe page.
+  // Allocate a trapframe page.--用于陷阱陷入
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
     return 0;
   }
+  // Allocate a trapframe page.--用于报警处理函数
+  if((p->alarm_trapframe = (struct trapframe *)kalloc()) == 0){
+    // 错误处理
+    release(&p->lock);
+    return 0;
+  }
 
-  // An empty user page table.
+  // An empty user page table.-分配用户页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
@@ -127,6 +133,14 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  //alarm相关参数初始化
+  p->interval=0;
+  p->interval_count=0;
+  p->handler=0;
+  //p->alarm_trapframe=0;
+  p->alarm_on=0;
+  //printf("进程alarm初始化成功\n");
+
   return p;
 }
 
@@ -138,7 +152,18 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+
+  //释放报警处理函数
+  if(p->alarm_trapframe)
+    kfree((void*)p->alarm_trapframe);
+  p->handler=0;
+  p->interval=0;
+  p->interval_count=0;
+  p->alarm_on=0;
+  p->alarm_trapframe = 0;
+  
   p->trapframe = 0;
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;

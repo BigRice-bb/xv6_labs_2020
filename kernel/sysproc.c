@@ -7,6 +7,36 @@
 #include "spinlock.h"
 #include "proc.h"
 
+//定义sys_sigalarm 和 sys_sigreturn
+uint64
+sys_sigalarm(void)
+{
+  //printf("sys_sigalarm\n");
+  int interval;
+  uint64 handler;
+  if(argint(0, &interval) < 0)
+    return -1;
+  if(argaddr(1, &handler) < 0)
+    return -1;
+  myproc()->interval=interval;
+  myproc()->handler=(void (*)(void))handler;
+  myproc()->interval_count=0;
+  return 0;
+}
+//定义sys_sigreturn
+uint64
+sys_sigreturn(void)
+{
+  //printf("sys_sigreturn\n");
+  //报警处理函数执行完毕 恢复寄存器状态
+  myproc()->alarm_on=0;//关闭报警
+  //恢复寄存器状态,返回用户态会回到之前的epc继续执行
+  memmove(myproc()->trapframe, myproc()->alarm_trapframe, sizeof(struct trapframe));//恢复寄存器状态
+  //myproc()->alarm_trapframe=0;//清空
+  //printf("报警关闭\n");
+  return 0;
+}
+
 uint64
 sys_exit(void)
 {

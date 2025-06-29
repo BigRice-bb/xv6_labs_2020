@@ -103,4 +103,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  //alarm 
+  int  interval; //报警间隔
+  void (*handler)(void);//定时中断处理函数
+  int interval_count;
+  //用于处理函数结束时调用sigreturn恢复寄存器状态 
+  struct trapframe *alarm_trapframe; //保存被中断时的寄存器状态
+  int alarm_on; //是否开启报警
 };
