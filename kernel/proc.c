@@ -242,7 +242,7 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
-  if(n > 0){
+  if(n > 0){//返回的是新的堆区大小
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
@@ -262,7 +262,7 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
-  // Allocate process.
+  // Allocate process. 从进程数组中拿出一个给np  分配pid号,分配一页物理页存放陷阱帧
   if((np = allocproc()) == 0){
     return -1;
   }

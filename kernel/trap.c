@@ -65,6 +65,34 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 13 || r_scause() == 15){//出现页错误
+    // page fault (load or store)
+    uint64 va = r_stval();//出错的虚拟地址
+    uint64 pa = walkaddr(p->pagetable, va);//获取对应的物理地址
+    
+    if(pa == 0){
+      printf("usertrap(): page fault at va=%p\n", va);
+      p->killed = 1;
+    } else {//若PA存在
+      // 检查是否是COW页错误
+      pte_t *pte = walk(p->pagetable, va, 0);
+      if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
+        // COW页错误：分配新页并复制内容
+        char *mem = kalloc();
+        if(mem == 0){
+          p->killed = 1;
+        } else {
+          memmove(mem, (char*)pa, PGSIZE);
+          // 只修改当前进程的PTE，不影响其他进程
+          *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
+          kunrefpage((void*)pa);  // 减少原页的引用计数
+          // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
+        }
+      } else {
+        printf("usertrap(): unexpected page fault at va=%p\n", va);
+        p->killed = 1;
+      }
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

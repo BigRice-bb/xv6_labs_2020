@@ -59,18 +59,18 @@ threetest()
 
   printf("three: ");
   
-  char *p = sbrk(sz);
+  char *p = sbrk(sz);//扩展堆区大小
   if(p == (char*)0xffffffffffffffffL){
     printf("sbrk(%d) failed\n", sz);
     exit(-1);
   }
 
   pid1 = fork();
-  if(pid1 < 0){
+  if(pid1 < 0){//失败
     printf("fork failed\n");
     exit(-1);
   }
-  if(pid1 == 0){
+  if(pid1 == 0){//子进程
     pid2 = fork();
     if(pid2 < 0){
       printf("fork failed");
@@ -87,7 +87,7 @@ threetest()
         }
       }
       exit(-1);
-    }
+    }//父进程
     for(char *q = p; q < p + (sz/2); q += 4096){
       *(int*)q = 9999;
     }
@@ -195,3 +195,4 @@ main(int argc, char *argv[])
 
   exit(0);
 }
+

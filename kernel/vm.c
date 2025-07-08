@@ -70,22 +70,24 @@ kvminithart()
 //    0..11 -- 12 bits of byte offset within the page.
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
+//目的是找到根PTE
 {
   if(va >= MAXVA)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
-    if(*pte & PTE_V) {
+    pte_t *pte = &pagetable[PX(level, va)];//PX(level, va)  用于提取出9为的页表索引
+    if(*pte & PTE_V) {//如果有效,说明不是根PTE  继续找
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
+      //一共只会找两次  如果PTE无效 分配页表
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+      *pte = PA2PTE(pagetable) | PTE_V;//将新的页表的首地址给PTE
     }
   }
-  return &pagetable[PX(0, va)];
+  return &pagetable[PX(0, va)];//返回根PTE的地址
 }
 
 // Look up a virtual address, return the physical address,
@@ -154,9 +156,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
+    //寻找根pte,若不存在则直接分配一页
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V)//未被映射的pte不会是PTE_V有效的
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
@@ -173,6 +176,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
+  //找到3级PTE  若该PTE 无效-代表根  转为物理地址  kfree掉-加入空闲页链表
   uint64 a;
   pte_t *pte;
 
@@ -188,7 +192,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      //kfree((void*)pa);
+      kunrefpage((void*)pa);//减少物理页引用计数
     }
     *pte = 0;
   }
@@ -236,12 +241,13 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
-    mem = kalloc();
+    mem = kalloc();//分配一页物理内存
     if(mem == 0){
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
+    //将物理内存和a开头的虚拟页 达成映射
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
@@ -305,35 +311,84 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+// int
+// uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+// {
+//   pte_t *pte;
+//   uint64 pa, i;
+//   uint flags;
+//   char *mem;
+
+//   for(i = 0; i < sz; i += PGSIZE){
+//     if((pte = walk(old, i, 0)) == 0)
+//       panic("uvmcopy: pte should exist");
+//     if((*pte & PTE_V) == 0)
+//       panic("uvmcopy: page not present");
+//     pa = PTE2PA(*pte);
+//     flags = PTE_FLAGS(*pte);
+//     if((mem = kalloc()) == 0)
+//       goto err;
+//     memmove(mem, (char*)pa, PGSIZE);
+//     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+//       kfree(mem);
+//       goto err;
+//     }
+//   }
+//   return 0;
+
+//  err:
+//   uvmunmap(new, 0, i / PGSIZE, 1);
+//   return -1;
+// }
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
+//我现在只需要将父进程的物理页映射给子进程  不需要分配新的内存空间
+//1,找到父进程物理页 
+//2,清除PTE的写标志
+//3,将父进程物理页映射到子进程
+
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
-
+  //char *mem;
+  //从0开始  分配新的内存  复制old的内存  将new映射到新的内存
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
+    if((pte = walk(old, i, 0)) == 0)//没找到PTE
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
+    if((*pte & PTE_V) == 0)//pte无效,没有完成映射
       panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
+    //上面两个if用于找到根PTE 存在&有实际物理映射
+    pa = PTE2PA(*pte);//1 完成
+    *pte&=~(PTE_W);//2 完成
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){//3,完成
+      //kfree(mem);
+      //goto err;
+      uvmunmap(new, 0, i / PGSIZE, 1);  // 清理已分配的页表
+      return -1;  //映射失败
     }
-  }
-  return 0;
+    // 增加物理页引用计数
+    krefpage((void*)pa);
 
- err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+//     flags = PTE_FLAGS(*pte);//提取出10位标志
+//     if((mem = kalloc()) == 0)
+//       goto err;
+//     memmove(mem, (char*)pa, PGSIZE);
+//     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+//       kfree(mem);
+//       goto err;
+//     }
+   }
+   return 0;
+
+//  err:
+//   uvmunmap(new, 0, i / PGSIZE, 1);
+//   return -1;
+  
 }
+
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -358,9 +413,28 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkaddr(pagetable, va0);//获取目标物理地址
     if(pa0 == 0)
       return -1;
+    
+    // 检查是否是COW页面，如果是则处理COW
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
+      // COW页面：分配新页并复制内容
+      char *mem = kalloc();
+      if(mem == 0)
+        return -1;
+      
+      memmove(mem, (char*)pa0, PGSIZE);
+      // 只修改当前进程的PTE，不影响其他进程
+      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
+      kunrefpage((void*)pa0);  // 减少原页的引用计数
+      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
+      
+      // 更新物理地址为新分配的页
+      pa0 = (uint64)mem;
+    }
+    
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -386,7 +460,26 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
-    n = PGSIZE - (srcva - va0);
+    
+    // 检查是否是COW页面，如果是则处理COW
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
+      // COW页面：分配新页并复制内容
+      char *mem = kalloc();
+      if(mem == 0)
+        return -1;
+      
+      memmove(mem, (char*)pa0, PGSIZE);
+      // 只修改当前进程的PTE，不影响其他进程
+      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
+      kunrefpage((void*)pa0);  // 减少原页的引用计数
+      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
+      
+      // 更新物理地址为新分配的页
+      pa0 = (uint64)mem;
+    }
+    
+    n = PGSIZE - (srcva - va0);//va0--srcva--PGSIZE 
     if(n > len)
       n = len;
     memmove(dst, (void *)(pa0 + (srcva - va0)), n);
@@ -413,6 +506,25 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+    
+    // 检查是否是COW页面，如果是则处理COW
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
+      // COW页面：分配新页并复制内容
+      char *mem = kalloc();
+      if(mem == 0)
+        return -1;
+      
+      memmove(mem, (char*)pa0, PGSIZE);
+      // 只修改当前进程的PTE，不影响其他进程
+      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
+      kunrefpage((void*)pa0);  // 减少原页的引用计数
+      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
+      
+      // 更新物理地址为新分配的页
+      pa0 = (uint64)mem;
+    }
+    
     n = PGSIZE - (srcva - va0);
     if(n > max)
       n = max;
