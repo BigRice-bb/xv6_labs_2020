@@ -334,7 +334,7 @@ exit(int status)
 {
   struct proc *p = myproc();
 
-  if(p == initproc)
+  if(p == initproc)//初始化进程不可退出
     panic("init exiting");
 
   // Close all open files.
@@ -366,7 +366,7 @@ exit(int status)
   // exiting parent, but the result will be a harmless spurious wakeup
   // to a dead or wrong process; proc structs are never re-allocated
   // as anything else.
-  acquire(&p->lock);
+  acquire(&p->lock);//先获取自己的锁
   struct proc *original_parent = p->parent;
   release(&p->lock);
   
@@ -399,20 +399,20 @@ wait(uint64 addr)
 {
   struct proc *np;
   int havekids, pid;
-  struct proc *p = myproc();
+  struct proc *p = myproc();//当前进程
 
   // hold p->lock for the whole time to avoid lost
   // wakeups from a child's exit().
-  acquire(&p->lock);
+  acquire(&p->lock);//获取当前进程的锁
 
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
-    for(np = proc; np < &proc[NPROC]; np++){
+    for(np = proc; np < &proc[NPROC]; np++){//遍历进程表
       // this code uses np->parent without holding np->lock.
       // acquiring the lock first would cause a deadlock,
       // since np might be an ancestor, and we already hold p->lock.
-      if(np->parent == p){
+      if(np->parent == p){//如果np的父进程是当前进程
         // np->parent can't change between the check and the acquire()
         // because only the parent changes it, and we're the parent.
         acquire(&np->lock);
@@ -420,6 +420,7 @@ wait(uint64 addr)
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
+          //将np的退出状态复制到p的地址空间
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                   sizeof(np->xstate)) < 0) {
             release(&np->lock);
@@ -442,6 +443,7 @@ wait(uint64 addr)
     }
     
     // Wait for a child to exit.
+    //用当前进程的锁当做唤醒通道来睡眠
     sleep(p, &p->lock);  //DOC: wait-sleep
   }
 }
@@ -462,7 +464,7 @@ scheduler(void)
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
+    intr_on();//在获取cpuid前关闭了中断，现在重新打开
     
     int nproc = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
@@ -477,6 +479,7 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
+        //切换到新进程，保存当前进程的上下文，恢复新进程的上下文
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -502,8 +505,8 @@ void
 sched(void)
 {
   int intena;
-  struct proc *p = myproc();
-
+  struct proc *p = myproc();//当前进程
+//mycpu()->context 当前cpu调度程序的上下文
   if(!holding(&p->lock))
     panic("sched p->lock");
   if(mycpu()->noff != 1)
@@ -519,6 +522,7 @@ sched(void)
 }
 
 // Give up the CPU for one scheduling round.
+//某一进程主动放弃CPU，让其他进程运行
 void
 yield(void)
 {
@@ -618,6 +622,7 @@ wakeup1(struct proc *p)
 int
 kill(int pid)
 {
+  //只是设置进程的killed属性为1,状态为RUNNABLE,并没有真正杀死进程
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++){
