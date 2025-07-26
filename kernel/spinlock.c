@@ -16,6 +16,7 @@ initlock(struct spinlock *lk, char *name)
   lk->cpu = 0;
 }
 
+
 // Acquire the lock.
 // Loops (spins) until the lock is acquired.
 void
@@ -88,9 +89,9 @@ holding(struct spinlock *lk)
 void
 push_off(void)
 {
-  int old = intr_get();
+  int old = intr_get();//获取中断状态
 
-  intr_off();
+  intr_off();//关闭中断
   if(mycpu()->noff == 0)
     mycpu()->intena = old;
   mycpu()->noff += 1;

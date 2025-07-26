@@ -31,13 +31,13 @@
 // but not from write().
 //
 void
-consputc(int c)
+consputc(int c)//发送一个字符到串口
 {
-  if(c == BACKSPACE){
+  if(c == BACKSPACE){//如果是退格符
     // if the user typed backspace, overwrite with a space.
-    uartputc_sync('\b'); uartputc_sync(' '); uartputc_sync('\b');
+    uartputc_sync('\b'); uartputc_sync(' '); uartputc_sync('\b');//发送退格符
   } else {
-    uartputc_sync(c);
+    uartputc_sync(c);//硬件相关的驱动程序//发送字符
   }
 }
 
@@ -50,7 +50,7 @@ struct {
   uint r;  // Read index
   uint w;  // Write index
   uint e;  // Edit index
-} cons;
+} cons;//控制台缓冲区(循环读写数组)
 
 //
 // user write()s to the console go here.
@@ -60,14 +60,15 @@ consolewrite(int user_src, uint64 src, int n)
 {
   int i;
 
-  acquire(&cons.lock);
-  for(i = 0; i < n; i++){
+  acquire(&cons.lock);//加锁
+  for(i = 0; i < n; i++){//写n个字符
     char c;
+    //从用户或内核空间复制一个字符到c
     if(either_copyin(&c, user_src, src+i, 1) == -1)
       break;
-    uartputc(c);
+    uartputc(c);//发送字符到串口控制台
   }
-  release(&cons.lock);
+  release(&cons.lock);//解锁
 
   return i;
 }
@@ -90,42 +91,44 @@ consoleread(int user_dst, uint64 dst, int n)
   while(n > 0){
     // wait until interrupt handler has put some
     // input into cons.buffer.
-    while(cons.r == cons.w){
+    while(cons.r == cons.w){//没有数据可读
       if(myproc()->killed){
         release(&cons.lock);
         return -1;
       }
-      sleep(&cons.r, &cons.lock);
+      sleep(&cons.r, &cons.lock);//等待的唤醒通道是cons.r
     }
 
+    //被唤醒
     c = cons.buf[cons.r++ % INPUT_BUF];
 
-    if(c == C('D')){  // end-of-file
+    if(c == C('D')){  // end-of-file 文件结束符
       if(n < target){
         // Save ^D for next time, to make sure
         // caller gets a 0-byte result.
-        cons.r--;
+        cons.r--;//将读指针回退一个字符
       }
-      break;
+      break;//读取结束
     }
 
     // copy the input byte to the user-space buffer.
     cbuf = c;
     if(either_copyout(user_dst, dst, &cbuf, 1) == -1)
+    //复制字符到用户空间或内核空间
       break;
 
-    dst++;
-    --n;
+    dst++;//指针后移
+    --n;//字符数-1
 
-    if(c == '\n'){
+    if(c == '\n'){//一整行读取完毕
       // a whole line has arrived, return to
       // the user-level read().
       break;
     }
   }
-  release(&cons.lock);
+  release(&cons.lock);//解锁
 
-  return target - n;
+  return target - n;//返回值为读取到的字符数
 }
 
 //
@@ -137,11 +140,11 @@ consoleread(int user_dst, uint64 dst, int n)
 void
 consoleintr(int c)
 {
-  acquire(&cons.lock);
+  acquire(&cons.lock);//加锁
 
   switch(c){
   case C('P'):  // Print process list.
-    procdump();
+    procdump();//打印进程列表
     break;
   case C('U'):  // Kill line.
     while(cons.e != cons.w &&
@@ -185,10 +188,10 @@ consoleinit(void)
 {
   initlock(&cons.lock, "cons");
 
-  uartinit();
+  uartinit();//初始化串口硬件
 
   // connect read and write system calls
   // to consoleread and consolewrite.
-  devsw[CONSOLE].read = consoleread;
+  devsw[CONSOLE].read = consoleread;//将read和write指向consoleread和consolewrite
   devsw[CONSOLE].write = consolewrite;
 }

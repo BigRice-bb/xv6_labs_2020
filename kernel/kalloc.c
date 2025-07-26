@@ -21,7 +21,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem;//物理内存分配器--维护一个空闲链表,记录空闲物理页
 
 void
 kinit()
