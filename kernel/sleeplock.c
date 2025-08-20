@@ -9,10 +9,11 @@
 #include "proc.h"
 #include "sleeplock.h"
 
+
 void
 initsleeplock(struct sleeplock *lk, char *name)
 {
-  initlock(&lk->lk, "sleep lock");
+  initlock(&lk->lk, "sleep lock");// 内部自旋锁的初始化
   lk->name = name;
   lk->locked = 0;
   lk->pid = 0;

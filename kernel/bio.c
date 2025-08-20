@@ -23,15 +23,16 @@
 #include "fs.h"
 #include "buf.h"
 
+//buffer cache 缓冲区缓存
 struct {
-  struct spinlock lock;
-  struct buf buf[NBUF];
+  struct spinlock lock;//自旋锁
+  struct buf buf[NBUF];//缓冲区数组 大小为NBUF=30
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
-  struct buf head;
-} bcache;
+  struct buf head;//链表头结点 buf是一个双向链表
+} bcache;//锁争用严重
 
 void
 binit(void)

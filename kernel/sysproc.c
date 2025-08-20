@@ -60,7 +60,7 @@ sys_sleep(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  acquire(&tickslock);
+  acquire(&tickslock);//ticks锁
   ticks0 = ticks;
   while(ticks - ticks0 < n){
     if(myproc()->killed){
@@ -68,6 +68,7 @@ sys_sleep(void)
       return -1;
     }
     sleep(&ticks, &tickslock);
+    //每次tick+1都检查一次，直到n个tick
   }
   release(&tickslock);
   return 0;

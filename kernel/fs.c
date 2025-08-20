@@ -68,37 +68,37 @@ balloc(uint dev)
   struct buf *bp;
 
   bp = 0;
-  for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
-    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
+  for(b = 0; b < sb.size; b += BPB){//外层循环遍历管理位图的磁盘块
+    bp = bread(dev, BBLOCK(b, sb));//读取当前位图块
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){//内层循环遍历当前位图块中的每个位
+      m = 1 << (bi % 8);//找出bi当前所在字节的第几位
       if((bp->data[bi/8] & m) == 0){  // Is block free?
-        bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
-        brelse(bp);
+        bp->data[bi/8] |= m;  // 将当前位设置为1,表示该块已被使用
+        log_write(bp);//将当前位图块写入磁盘
+        brelse(bp);//释放当前位图块
         bzero(dev, b + bi);
-        return b + bi;
+        return b + bi;//返回找到的空闲块号
       }
     }
-    brelse(bp);
+    brelse(bp);//释放当前位图块
   }
   panic("balloc: out of blocks");
 }
 
 // Free a disk block.
 static void
-bfree(int dev, uint b)
+bfree(int dev, uint b)//传入设备号 块号
 {
   struct buf *bp;
   int bi, m;
 
-  bp = bread(dev, BBLOCK(b, sb));
-  bi = b % BPB;
-  m = 1 << (bi % 8);
+  bp = bread(dev, BBLOCK(b, sb));//读出当前块号 对应的位图块
+  bi = b % BPB;//bi代表 当前位图块的第几个比特位
+  m = 1 << (bi % 8);//m代表所在字节的第几位
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
-  bp->data[bi/8] &= ~m;
-  log_write(bp);
+  bp->data[bi/8] &= ~m;//将该位清0
+  log_write(bp);//将位图块写入日志
   brelse(bp);
 }
 
@@ -199,6 +199,7 @@ ialloc(uint dev, short type)
   struct buf *bp;
   struct dinode *dip;
 
+  //遍历SuperBlock中的inode位图,找到第一个空闲的inode
   for(inum = 1; inum < sb.ninodes; inum++){
     bp = bread(dev, IBLOCK(inum, sb));
     dip = (struct dinode*)bp->data + inum%IPB;

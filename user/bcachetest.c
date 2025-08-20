@@ -94,22 +94,23 @@ test0()
   file[1] = '\0';
 
   printf("start test0\n");
-  for(int i = 0; i < NCHILD; i++){
-    dir[0] = '0' + i;
+  for(int i = 0; i < NCHILD; i++){//创建NCHILD - 3个目录
+    dir[0] = '0' + i;//创建3个目录/0  /1   /2
     mkdir(dir);
-    if (chdir(dir) < 0) {
+    if (chdir(dir) < 0) {//进入目录
       printf("chdir failed\n");
       exit(1);
     }
-    unlink(file);
-    createfile(file, N);
-    if (chdir("..") < 0) {
+    unlink(file);//删除文件
+    createfile(file, N);//创建F文件 大小为10个块
+    if (chdir("..") < 0) {//返回上一级目录
       printf("chdir failed\n");
       exit(1);
     }
   }
-  m = ntas(0);
-  for(int i = 0; i < NCHILD; i++){
+  m = ntas(0);//m为锁争用数
+  for(int i = 0; i < NCHILD; i++){//创建3个子进程,
+  // 分别进入/0 /1 /2目录 读取F文件
     dir[0] = '0' + i;
     int pid = fork();
     if(pid < 0){
@@ -121,7 +122,7 @@ test0()
         printf("chdir failed\n");
         exit(1);
       }
-
+      //一个一个字节的读取文件 10 *1024
       readfile(file, N*BSIZE, 1);
 
       exit(0);
@@ -133,7 +134,7 @@ test0()
   }
   printf("test0 results:\n");
   n = ntas(1);
-  if (n-m < 500)
+  if (n-m < 500)//测试期间新增的锁争用次数
     printf("test0: OK\n");
   else
     printf("test0: FAIL\n");
@@ -148,12 +149,12 @@ void test1()
   file[0] = 'B';
   file[2] = '\0';
   for(int i = 0; i < NCHILD; i++){
-    file[1] = '0' + i;
-    unlink(file);
-    if (i == 0) {
+    file[1] = '0' + i;//创建2个文件B0 B1
+    unlink(file);//删除文件B0 B1 
+    if (i == 0) {//创建B0文件 大小为100个块
       createfile(file, BIG);
     } else {
-      createfile(file, 1);
+      createfile(file, 1);//创建B1文件 大小为1个块
     }
   }
   for(int i = 0; i < NCHILD; i++){
@@ -165,16 +166,16 @@ void test1()
     }
     if(pid == 0){
       if (i==0) {
-        for (i = 0; i < N; i++) {
+        for (i = 0; i < N; i++) {//读100次  B0
           readfile(file, BIG*BSIZE, BSIZE);
         }
-        unlink(file);
+        unlink(file);//删除文件B0
         exit(0);
       } else {
-        for (i = 0; i < N; i++) {
+        for (i = 0; i < N; i++) {//读100次  B1    
           readfile(file, 1, BSIZE);
         }
-        unlink(file);
+        unlink(file);//删除文件B1
       }
       exit(0);
     }
