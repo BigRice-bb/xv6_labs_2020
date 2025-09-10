@@ -267,8 +267,12 @@ iappend(uint inum, void *xp, int n)
   uint fbn, off, n1;
   struct dinode din;
   char buf[BSIZE];
-  uint indirect[NINDIRECT];
+  uint indirect[NINDIRECT1];       // Buffer for L1 indirect block
+  uint indirect2[NINDIRECT1];      // Buffer for L2 indirect block
   uint x;
+  uint l1_addr, l2_addr;
+  uint l1_idx;
+  uint l2_idx;
 
   rinode(inum, &din);
   off = xint(din.size);
@@ -281,7 +285,8 @@ iappend(uint inum, void *xp, int n)
         din.addrs[fbn] = xint(freeblock++);
       }
       x = xint(din.addrs[fbn]);
-    } else {
+    } 
+    else if(fbn < NDIRECT+NINDIRECT1){
       if(xint(din.addrs[NDIRECT]) == 0){
         din.addrs[NDIRECT] = xint(freeblock++);
       }
@@ -291,6 +296,32 @@ iappend(uint inum, void *xp, int n)
         wsect(xint(din.addrs[NDIRECT]), (char*)indirect);
       }
       x = xint(indirect[fbn-NDIRECT]);
+    }
+    else {
+      l1_idx = (fbn - NDIRECT - NINDIRECT1) / NINDIRECT1;
+      l2_idx = (fbn - NDIRECT - NINDIRECT1) % NINDIRECT1;
+      
+      // Ensure L1 table exists
+      if((l1_addr = xint(din.addrs[NDIRECT + 1])) == 0) {
+        l1_addr = freeblock++;
+        din.addrs[NDIRECT + 1] = xint(l1_addr);
+      }
+      rsect(l1_addr, (char*)indirect); // Read L1 table
+
+      // Ensure L2 table exists
+      if((l2_addr = xint(indirect[l1_idx])) == 0) {
+        l2_addr = freeblock++;
+        indirect[l1_idx] = xint(l2_addr);
+        wsect(l1_addr, (char*)indirect); // Write back modified L1 table
+      }
+      rsect(l2_addr, (char*)indirect2); // Read L2 table
+
+      // Ensure data block exists
+      if(xint(indirect2[l2_idx]) == 0) {
+        indirect2[l2_idx] = xint(freeblock++);
+        wsect(l2_addr, (char*)indirect2); // Write back modified L2 table
+      }
+      x = xint(indirect2[l2_idx]);
     }
     n1 = min(n, (fbn + 1) * BSIZE - off);
     rsect(x, buf);

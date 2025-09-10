@@ -78,7 +78,7 @@ bget(uint dev, uint blockno)
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
-      b->valid = 0;
+      b->valid = 0;//该块为新块,需要从磁盘读取,更新内容
       b->refcnt = 1;
       release(&bcache.lock);
       acquiresleep(&b->lock);
@@ -95,6 +95,8 @@ bread(uint dev, uint blockno)
   struct buf *b;
 
   b = bget(dev, blockno);
+  //如果b为老块,不用读取磁盘,直接返回
+  //如果b为新块,需要从磁盘读取,更新内容
   if(!b->valid) {
     virtio_disk_rw(b, 0);
     b->valid = 1;

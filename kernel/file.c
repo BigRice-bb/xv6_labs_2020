@@ -64,19 +64,20 @@ fileclose(struct file *f)
   acquire(&ftable.lock);
   if(f->ref < 1)
     panic("fileclose");
-  if(--f->ref > 0){
+  if(--f->ref > 0){//若引用计数大于0,则释放锁
     release(&ftable.lock);
     return;
   }
+  //若引用计数为0,则关闭文件
   ff = *f;
   f->ref = 0;
   f->type = FD_NONE;
   release(&ftable.lock);
 
-  if(ff.type == FD_PIPE){
+  if(ff.type == FD_PIPE){//若为管道,则关闭管道
     pipeclose(ff.pipe, ff.writable);
   } else if(ff.type == FD_INODE || ff.type == FD_DEVICE){
-    begin_op();
+    begin_op();//若为inode或设备,则关闭inode
     iput(ff.ip);
     end_op();
   }
@@ -145,7 +146,7 @@ filewrite(struct file *f, uint64 addr, int n)
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].write)
       return -1;
     ret = devsw[f->major].write(1, addr, n);
-  } else if(f->type == FD_INODE){
+  } else if(f->type ==  FD_INODE){
     // write a few blocks at a time to avoid exceeding
     // the maximum log transaction size, including
     // i-node, indirect block, allocation blocks,

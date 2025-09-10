@@ -34,7 +34,7 @@
 // and to keep track in memory of logged block# before commit.
 struct logheader {
   int n;
-  int block[LOGSIZE];
+  int block[LOGSIZE];//代表blockno 扇区号,
 };
 
 struct log {
@@ -126,15 +126,16 @@ recover_from_log(void)
 void
 begin_op(void)
 {
-  acquire(&log.lock);
+  acquire(&log.lock);//获取日志锁
   while(1){
     if(log.committing){
-      sleep(&log, &log.lock);
+      sleep(&log, &log.lock);//如果当前日志正在提交,睡眠等待
     } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
       // this op might exhaust log space; wait for commit.
-      sleep(&log, &log.lock);
+      sleep(&log, &log.lock);//如果日志空间不足,睡眠等待
     } else {
-      log.outstanding += 1;
+      log.outstanding += 1;//用来统计当前有多少个系统调用正在执行
+      //一次op包含多个系统操作
       release(&log.lock);
       break;
     }
@@ -149,17 +150,17 @@ end_op(void)
   int do_commit = 0;
 
   acquire(&log.lock);
-  log.outstanding -= 1;
+  log.outstanding -= 1;//处理了一个事务,该事务需要修改的块号已经在写入了日志头中
   if(log.committing)
     panic("log.committing");
-  if(log.outstanding == 0){
+  if(log.outstanding == 0){//如果所有事务都处理完了,可以提交
     do_commit = 1;
     log.committing = 1;
   } else {
     // begin_op() may be waiting for log space,
     // and decrementing log.outstanding has decreased
     // the amount of reserved space.
-    wakeup(&log);
+    wakeup(&log);//可以唤醒begin_op()中的睡眠等待,开启下一个事务
   }
   release(&log.lock);
 
@@ -226,8 +227,8 @@ log_write(struct buf *b)
     if (log.lh.block[i] == b->blockno)   // log absorbtion
       break;
   }
-  log.lh.block[i] = b->blockno;
-  if (i == log.lh.n) {  // Add new block to log?
+  log.lh.block[i] = b->blockno;//将需要写入的块号写入日志
+  if (i == log.lh.n) {  //如果该块为新块,需要增加该块的引用计数,将其固定在缓存区// Add new block to log?
     bpin(b);
     log.lh.n++;
   }
