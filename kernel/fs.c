@@ -575,7 +575,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
   uint off, inum;
   struct dirent de;
 
-  if(dp->type != T_DIR)
+  if(dp->type != T_DIR)//T_DIR代表目录
     panic("dirlookup not DIR");
 
   for(off = 0; off < dp->size; off += sizeof(de)){//逐个读取inode中的目录项
@@ -619,6 +619,7 @@ dirlink(struct inode *dp, char *name, uint inum)
 
   strncpy(de.name, name, DIRSIZ);
   de.inum = inum;//调用writei写入目录项
+  //通过在目录inode的off偏移 , 写入一个dir目录项 记录 name 和 inum
   if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("dirlink");
 
@@ -661,7 +662,7 @@ skipelem(char *path, char *name)
   }
   while(*path == '/')
     path++;
-  return path;
+  return path;//返回下一个非/字符
 }
 
 // Look up and return the inode for a path name.
@@ -676,10 +677,11 @@ namex(char *path, int nameiparent, char *name)
   if(*path == '/')//如果为根目录则从根目录所在目录inode开始找 
     ip = iget(ROOTDEV, ROOTINO);
   else
-    ip = idup(myproc()->cwd);//否则从当前目录开始找
+    ip = idup(myproc()->cwd);//否则从当前目录开始找  当前目录是一个inode
 
-  while((path = skipelem(path, name)) != 0){
+  while((path = skipelem(path, name)) != 0){//从path中提取出name  返回下一级目录首地址
     ilock(ip);
+    
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;
@@ -687,9 +689,9 @@ namex(char *path, int nameiparent, char *name)
     if(nameiparent && *path == '\0'){
       // Stop one level early.
       iunlock(ip);
-      return ip;
+      return ip;//返回倒数第二级目录,也就是父目录
     }
-    if((next = dirlookup(ip, name, 0)) == 0){//取出该目录对应的数据块
+    if((next = dirlookup(ip, name, 0)) == 0){//取出该目录对应的inode == next
       iunlockput(ip);
       return 0;
     }

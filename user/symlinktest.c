@@ -28,6 +28,7 @@ main(int argc, char *argv[])
 static void
 cleanup(void)
 {
+  //删除所有文件
   unlink("/testsymlink/a");
   unlink("/testsymlink/b");
   unlink("/testsymlink/c");
@@ -62,11 +63,13 @@ testsymlink(void)
     
   printf("Start: test symlinks\n");
 
-  mkdir("/testsymlink");
+  mkdir("/testsymlink");//调用create函数创建一个目录文件
 
+  //打开a文件 在进程文件结构体数组中找到空位置,将该文件放入该位置,返回fd为该位置下标
   fd1 = open("/testsymlink/a", O_CREATE | O_RDWR);
   if(fd1 < 0) fail("failed to open a");
 
+  //创建一个符号链接 b -> a
   r = symlink("/testsymlink/a", "/testsymlink/b");
   if(r < 0)
     fail("symlink b -> a failed");
@@ -74,6 +77,7 @@ testsymlink(void)
   if(write(fd1, buf, sizeof(buf)) != 4)
     fail("failed to write to a");
 
+  //取出b的文件信息  检查b是否为符号链接
   if (stat_slink("/testsymlink/b", &st) != 0)
     fail("failed to stat b");
   if(st.type != T_SYMLINK)
@@ -86,10 +90,11 @@ testsymlink(void)
   if (c != 'a')
     fail("failed to read bytes from b");
 
-  unlink("/testsymlink/a");
+  unlink("/testsymlink/a");//删除a文件
   if(open("/testsymlink/b", O_RDWR) >= 0)
     fail("Should not be able to open b after deleting a");
 
+  //创建一个符号链接 a -> b
   r = symlink("/testsymlink/b", "/testsymlink/a");
   if(r < 0)
     fail("symlink a -> b failed");
@@ -97,7 +102,7 @@ testsymlink(void)
   r = open("/testsymlink/b", O_RDWR);
   if(r >= 0)
     fail("Should not be able to open b (cycle b->a->b->..)\n");
-  
+  //创建一个符号链接 c -> nonexistent
   r = symlink("/testsymlink/nonexistent", "/testsymlink/c");
   if(r != 0)
     fail("Symlinking to nonexistent file should succeed\n");
