@@ -50,7 +50,7 @@ struct {
   uint r;  // Read index
   uint w;  // Write index
   uint e;  // Edit index
-} cons;
+} cons;//控制台缓冲区
 
 //
 // user write()s to the console go here.
@@ -62,6 +62,7 @@ consolewrite(int user_src, uint64 src, int n)
 
   for(i = 0; i < n; i++){
     char c;
+    //从控制台拷贝一个字符到内核临时变量c
     if(either_copyin(&c, user_src, src+i, 1) == -1)
       break;
     uartputc(c);
@@ -72,31 +73,31 @@ consolewrite(int user_src, uint64 src, int n)
 
 //
 // user read()s from the console go here.
-// copy (up to) a whole input line to dst.
+// copy (up to) a whole input line to dst. 拷貝一整行到dst
 // user_dist indicates whether dst is a user
 // or kernel address.
 //
 int
-consoleread(int user_dst, uint64 dst, int n)
+consoleread(int user_dst, uint64 dst, int n)//读取控制台上的一整行数据 拷贝到目标地址dst
 {
   uint target;
   int c;
   char cbuf;
 
-  target = n;
-  acquire(&cons.lock);
+  target = n;//目標字符數
+  acquire(&cons.lock);//控制台數據結構
   while(n > 0){
     // wait until interrupt handler has put some
     // input into cons.buffer.
-    while(cons.r == cons.w){
+    while(cons.r == cons.w){//讀=寫 空
       if(myproc()->killed){
         release(&cons.lock);
         return -1;
       }
-      sleep(&cons.r, &cons.lock);
+      sleep(&cons.r, &cons.lock); //如果缓冲区等待cons.r唤醒
     }
 
-    c = cons.buf[cons.r++ % INPUT_BUF];
+    c = cons.buf[cons.r++ % INPUT_BUF]; //從緩衝區中讀取一個字符
 
     if(c == C('D')){  // end-of-file
       if(n < target){
@@ -169,7 +170,7 @@ consoleintr(int c)
         // wake up consoleread() if a whole line (or end-of-file)
         // has arrived.
         cons.w = cons.e;
-        wakeup(&cons.r);
+        wakeup(&cons.r);//读完一整行数据  唤醒读位置
       }
     }
     break;
@@ -183,10 +184,12 @@ consoleinit(void)
 {
   initlock(&cons.lock, "cons");
 
-  uartinit();
+  uartinit();//初始化串口
 
   // connect read and write system calls
   // to consoleread and consolewrite.
+  //将read write系统调用绑定到consoleread和consolewrite
+  //当陷阱处理函数产生设备中断时,会调用consoleread和consolewrite
   devsw[CONSOLE].read = consoleread;
   devsw[CONSOLE].write = consolewrite;
 }

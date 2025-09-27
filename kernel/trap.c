@@ -65,7 +65,7 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if((which_dev = devintr()) != 0){//中断类型为设备中断
     // ok
   } else {
 
@@ -179,23 +179,23 @@ clockintr()
 int
 devintr()
 {
-  uint64 scause = r_scause();
+  uint64 scause = r_scause();//获取中断类型
 
   if((scause & 0x8000000000000000L) &&
      (scause & 0xff) == 9){
     // this is a supervisor external interrupt, via PLIC.
 
     // irq indicates which device interrupted.
-    int irq = plic_claim();
+    int irq = plic_claim();//确定哪个设备中断
 
     if(irq == UART0_IRQ){
-      uartintr();
+      uartintr();//处理UART中断
     } else if(irq == VIRTIO0_IRQ){
-      virtio_disk_intr();
+      virtio_disk_intr();//处理虚拟磁盘中断
     }
 #ifdef LAB_NET
     else if(irq == E1000_IRQ){
-      e1000_intr();
+      e1000_intr();//处理网卡中断
     }
 #endif
     else if(irq){
@@ -206,20 +206,20 @@ devintr()
     // interrupt at a time; tell the PLIC the device is
     // now allowed to interrupt again.
     if(irq)
-      plic_complete(irq);
+      plic_complete(irq);//告诉PLIC该设备可以再次中断
 
     return 1;
-  } else if(scause == 0x8000000000000001L){
+  } else if(scause == 0x8000000000000001L){//机器模式时钟中断
     // software interrupt from a machine-mode timer interrupt,
     // forwarded by timervec in kernelvec.S.
 
     if(cpuid() == 0){
-      clockintr();
+      clockintr();//处理时钟中断
     }
     
     // acknowledge the software interrupt by clearing
     // the SSIP bit in sip.
-    w_sip(r_sip() & ~2);
+    w_sip(r_sip() & ~2);//清除SSIP位  代表中断处理完毕
 
     return 2;
   } else {

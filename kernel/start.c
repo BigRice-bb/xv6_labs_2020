@@ -67,7 +67,7 @@ timerinit()
   // scratch[0..2] : space for timervec to save registers.
   // scratch[3] : address of CLINT MTIMECMP register.
   // scratch[4] : desired interval (in cycles) between timer interrupts.
-  uint64 *scratch = &timer_scratch[id][0];
+  uint64 *scratch = &timer_scratch[id][0];//定义一组寄存器,暂存管理员模式 或则用户模式 的寄存器 的值
   scratch[3] = CLINT_MTIMECMP(id);
   scratch[4] = interval;
   w_mscratch((uint64)scratch);

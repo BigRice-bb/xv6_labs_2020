@@ -2,15 +2,16 @@
 // packet buffer management
 //
 
+
 #define MBUF_SIZE              2048
 #define MBUF_DEFAULT_HEADROOM  128
 
 struct mbuf {
-  struct mbuf  *next; // the next mbuf in the chain
-  char         *head; // the current start position of the buffer
-  unsigned int len;   // the length of the buffer
-  char         buf[MBUF_SIZE]; // the backing store
-};
+  struct mbuf  *next; // 若数据包很大,一个数据结构存不下 就会拓展到下一个包裹箱
+  char         *head; // 有效数据位的起始位置  跳过buf的无效头部信息 直接指向有效数据
+  unsigned int len;   // 有效数据的长度
+  char         buf[MBUF_SIZE]; // 包裹箱 存放数据包 大小2048B 2K
+};//buf = head + len
 
 char *mbufpull(struct mbuf *m, unsigned int len);
 char *mbufpush(struct mbuf *m, unsigned int len);

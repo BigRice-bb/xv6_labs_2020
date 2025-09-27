@@ -1,9 +1,9 @@
 //
 // E1000 hardware definitions: registers and DMA ring format.
 // from the Intel 82540EP/EM &c manual.
-//
+// E1000 硬件定义:寄存器和标志位  DMA环格式。
 
-/* Registers */
+/* Registers *///定义了e1000的寄存器偏移地址
 #define E1000_CTL      (0x00000/4)  /* Device Control Register - RW */
 #define E1000_ICR      (0x000C0/4)  /* Interrupt Cause Read - R */
 #define E1000_IMS      (0x000D0/4)  /* Interrupt Mask Set - RW */
@@ -97,15 +97,15 @@
 #define E1000_TXD_STAT_DD    0x00000001 /* Descriptor Done */
 
 // [E1000 3.3.3]
-struct tx_desc
+struct tx_desc //以16字节对齐   大小为128字节
 {
-  uint64 addr;
-  uint16 length;
-  uint8 cso;
-  uint8 cmd;
-  uint8 status;
+  uint64 addr; //地址
+  uint16 length; //长度
+  uint8 cso; //校验和偏移
+  uint8 cmd; //命令
+  uint8 status; //状态
   uint8 css;
-  uint16 special;
+  uint16 special; //特殊
 };
 
 /* Receive Descriptor bit definitions [E1000 3.2.3.1] */

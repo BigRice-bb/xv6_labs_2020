@@ -1,6 +1,7 @@
 //
 // networking protocol support (IP, UDP, ARP, etc.).
 //
+//实现IP  UDP 和 ARP 协议
 
 #include "types.h"
 #include "param.h"
@@ -166,12 +167,12 @@ net_tx_eth(struct mbuf *m, uint16 ethtype)
   struct eth *ethhdr;
 
   ethhdr = mbufpushhdr(m, *ethhdr);
-  memmove(ethhdr->shost, local_mac, ETHADDR_LEN);
+  memmove(ethhdr->shost, local_mac, ETHADDR_LEN);//源MAC地址
   // In a real networking stack, dhost would be set to the address discovered
   // through ARP. Because we don't support enough of the ARP protocol, set it
   // to broadcast instead.
-  memmove(ethhdr->dhost, broadcast_mac, ETHADDR_LEN);
-  ethhdr->type = htons(ethtype);
+  memmove(ethhdr->dhost, broadcast_mac, ETHADDR_LEN);//目的MAC地址赋值
+  ethhdr->type = htons(ethtype);//以太网类型
   if (e1000_transmit(m)) {
     mbuffree(m);
   }
