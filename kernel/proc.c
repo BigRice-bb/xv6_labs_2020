@@ -99,7 +99,7 @@ struct proc*
 myproc(void) {
   push_off();
   struct cpu *c = mycpu();
-  struct proc *p = c->proc;
+  struct prooc *p = c->proc;
   pop_off();
   return p;
 }

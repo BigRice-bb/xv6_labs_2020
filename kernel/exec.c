@@ -54,7 +54,7 @@ exec(char *path, char **argv)
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)//把inode中的数据写到va映射的pa处
       goto bad;
   }
   iunlockput(ip);
@@ -71,7 +71,7 @@ exec(char *path, char **argv)
   if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
   sz = sz1;
-  uvmclear(pagetable, sz-2*PGSIZE);
+  uvmclear(pagetable, sz-2*PGSIZE);//取消该页的用户访问权限
   sp = sz;
   stackbase = sp - PGSIZE;
 
@@ -83,7 +83,7 @@ exec(char *path, char **argv)
     sp -= sp % 16; // riscv sp must be 16-byte aligned
     if(sp < stackbase)
       goto bad;
-    if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
+    if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)//将参数复制到栈区
       goto bad;
     ustack[argc] = sp;
   }
