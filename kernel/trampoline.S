@@ -18,7 +18,7 @@ uservec:
         # trap.c sets stvec to point here, so
         # traps from user space start here,
         # in supervisor mode, but with a
-        # user page table.
+        # user page table.  #stvec = uservec   用户空间页表
         #
         # sscratch points to where the process's p->trapframe is
         # mapped into user space, at TRAPFRAME.
@@ -26,7 +26,7 @@ uservec:
         
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
-        csrrw a0, sscratch, a0
+        csrrw a0, sscratch, a0   #交换a0和sscratch   使a0指向trapfream 
 
         # save the user registers in TRAPFRAME
         sd ra, 40(a0)
@@ -64,6 +64,7 @@ uservec:
         csrr t0, sscratch
         sd t0, 112(a0)
 
+        #从trapframe恢复内核信息
         # restore kernel stack pointer from p->trapframe->kernel_sp
         ld sp, 8(a0)
 
@@ -75,16 +76,16 @@ uservec:
 
         # restore kernel page table from p->trapframe->kernel_satp
         ld t1, 0(a0)
-        csrw satp, t1
+        csrw satp, t1  #切换到内核页表
         sfence.vma zero, zero
 
         # a0 is no longer valid, since the kernel page
         # table does not specially map p->tf.
 
         # jump to usertrap(), which does not return
-        jr t0
+        jr t0  #跳转到usertrap()函数
 
-.globl userret
+.globl userret  #用户态到内核态 
 userret:
         # userret(TRAPFRAME, pagetable)
         # switch from kernel to user.
