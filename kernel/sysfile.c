@@ -138,11 +138,11 @@ sys_link(void)
     return -1;
   }
 
-  ip->nlink++;
-  iupdate(ip);
+  ip->nlink++;//inode的链接数加1
+  iupdate(ip);//将inode写回磁盘
   iunlock(ip);
 
-  if((dp = nameiparent(new, name)) == 0)//返回父目录inode
+  if((dp = nameiparent(new, name)) == 0)//返回父目录inode  new=b/c name=b
     goto bad;
   ilock(dp);
   //这一步将在new目录的父目录下创建一个指向old文件inode 的新目录
@@ -212,7 +212,7 @@ sys_unlink(void)
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
-  if(ip->type == T_DIR && !isdirempty(ip)){
+  if(ip->type == T_DIR && !isdirempty(ip)){//如果ip是目录,且目录不为空,则不能删除
     iunlockput(ip);
     goto bad;
   }
@@ -317,6 +317,7 @@ sys_open(void)
         return -1;
       }
       ilock(ip);
+      //如果是软链接就readi找到target的path继续循环调用namei,直到type!=T_SYMLINK
       if(ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) {
         if(++symlink_depth > 10) {
           // too many layer of symlinks, might be a loop
@@ -324,6 +325,7 @@ sys_open(void)
           end_op();
           return -1;
         }
+        //将ip中的第一个uint读给path
         if(readi(ip, 0, (uint64)path, 0, MAXPATH) < 0) {
           iunlockput(ip);
           end_op();

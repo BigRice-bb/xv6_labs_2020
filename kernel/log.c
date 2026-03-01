@@ -76,7 +76,7 @@ install_trans(int recovering)
     memmove(dbuf->data, lbuf->data, BSIZE);  // copy block to dst
     bwrite(dbuf);  // write dst to disk
     if(recovering == 0)
-      bunpin(dbuf);
+      bunpin(dbuf);//在log_write的时候被pin的,这时候写回到磁盘,可以释放
     brelse(lbuf);
     brelse(dbuf);
   }
@@ -102,15 +102,15 @@ read_head(void)
 static void
 write_head(void)
 {
-  struct buf *buf = bread(log.dev, log.start);
-  struct logheader *hb = (struct logheader *) (buf->data);
+  struct buf *buf = bread(log.dev, log.start);//读取log数据结构中的头块元数据块
+  struct logheader *hb = (struct logheader *) (buf->data);//获取元数据指针
   int i;
-  hb->n = log.lh.n;
+  hb->n = log.lh.n;//将日志区中记录的块数写入元数据块
   for (i = 0; i < log.lh.n; i++) {
-    hb->block[i] = log.lh.block[i];
+    hb->block[i] = log.lh.block[i];//将日志区中记录的块号写入元数据块
   }
-  bwrite(buf);
-  brelse(buf);
+  bwrite(buf); //写磁盘元数据块
+  brelse(buf); //释放缓存块
 }
 
 static void
@@ -182,10 +182,10 @@ write_log(void)
   int tail;
 
   for (tail = 0; tail < log.lh.n; tail++) {
-    struct buf *to = bread(log.dev, log.start+tail+1); // log block
-    struct buf *from = bread(log.dev, log.lh.block[tail]); // cache block
+    struct buf *to = bread(log.dev, log.start+tail+1); //日志区的块
+    struct buf *from = bread(log.dev, log.lh.block[tail]); //缓存区的块
     memmove(to->data, from->data, BSIZE);
-    bwrite(to);  // write the log
+    bwrite(to);  // 写磁盘日志
     brelse(from);
     brelse(to);
   }

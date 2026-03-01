@@ -62,22 +62,23 @@ bzero(int dev, int bno)
 
 // Allocate a zeroed disk block.
 static uint
-balloc(uint dev)//分配一个新块
+balloc(uint dev)//分配一个新块,返回新块号
 {
   int b, bi, m;
   struct buf *bp;
 
   bp = 0;
-  for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
+  for(b = 0; b < sb.size; b += BPB){//sb.size是一共有多少个数据块
+    //BPB是一个位图块的bit数,即8192bit
+    bp = bread(dev, BBLOCK(b, sb));//BBLOCK(b, sb)将块b转换成表示它的位图块
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){  // Is block free?
-        bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
+      m = 1 << (bi % 8);//m代表当前字节的第几位
+      if((bp->data[bi/8] & m) == 0){  // 代表该块free可用
+        bp->data[bi/8] |= m;  // 将该块对应的bit置1
+        log_write(bp);//写入日志log数据结构中
         brelse(bp);
-        bzero(dev, b + bi);
-        return b + bi;
+        bzero(dev, b + bi);//为新分配的块清零
+        return b + bi;//返回新分配的块号
       }
     }
     brelse(bp);
@@ -92,13 +93,13 @@ bfree(int dev, uint b)
   struct buf *bp;
   int bi, m;
 
-  bp = bread(dev, BBLOCK(b, sb));
-  bi = b % BPB;
-  m = 1 << (bi % 8);
+  bp = bread(dev, BBLOCK(b, sb));//BBLOCK(b, sb)将块b转换成表示它的位图块
+  bi = b % BPB;//对于该位图块的偏移
+  m = 1 << (bi % 8);//第几个bit
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
-  bp->data[bi/8] &= ~m;
-  log_write(bp);
+  bp->data[bi/8] &= ~m;//清空该块位图块对应的bit
+  log_write(bp);//写入日志log数据结构中
   brelse(bp);
 }
 
@@ -196,14 +197,14 @@ struct inode*
 ialloc(uint dev, short type)
 {
   int inum;
-  struct buf *bp;
+  struct buf *bp; //磁盘块数据缓存
   struct dinode *dip;
 
   for(inum = 1; inum < sb.ninodes; inum++){//sb超级块中有inode总数
-    bp = bread(dev, IBLOCK(inum, sb));
-    dip = (struct dinode*)bp->data + inum%IPB;//该块中的具体inode偏移
+    bp = bread(dev, IBLOCK(inum, sb));//读取该inode所在的块
+    dip = (struct dinode*)bp->data + inum%IPB;//该块中的具体inode偏移,指针步长为dinode大小
     if(dip->type == 0){  // a free inode
-      memset(dip, 0, sizeof(*dip));
+      memset(dip, 0, sizeof(*dip)); 
       dip->type = type;
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
@@ -316,7 +317,7 @@ ilock(struct inode *ip)
 void
 iunlock(struct inode *ip)
 {
-  if(ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1)
+  if(ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1)//holdingsleep当前进程是否持有该睡眠锁
     panic("iunlock");
 
   releasesleep(&ip->lock);
@@ -343,18 +344,18 @@ iput(struct inode *ip)
 
     release(&icache.lock);
 
-    itrunc(ip);
+    itrunc(ip);//释放inode的直接数据块和间接数据块
     ip->type = 0;//代表该缓存槽空闲
-    iupdate(ip);
-    ip->valid = 0;
+    iupdate(ip);//将缓存写回磁盘
+    ip->valid = 0;//将缓存标记为无效
 
-    releasesleep(&ip->lock);
+    releasesleep(&ip->lock);//释放睡眠锁
 
-    acquire(&icache.lock);
+    acquire(&icache.lock);//获取缓存锁
   }
 
-  ip->ref--;
-  release(&icache.lock);
+  ip->ref--;//引用计数减1
+  release(&icache.lock);//释放缓存锁
 }
 
 // Common idiom: unlock, then put.
@@ -383,15 +384,17 @@ bmap(struct inode *ip, uint bn)//传入一个inode 和 数据块号
   //若为直接数据块地址,直接返回
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)//如果该块为空,则分配一个新块
-      ip->addrs[bn] = addr = balloc(ip->dev);//将新块的地址赋值给ip->addrs[bn]
+      //addr数组存放的是数据块在磁盘中的的块号
+      ip->addrs[bn] = addr = balloc(ip->dev);//将新块的块号赋值给ip->addrs[bn]
     return addr;
   }
   else if (bn<NDIRECT+NINDIRECT1) {//一级目录
     bn -= NDIRECT;
     if ((addr=ip->addrs[NDIRECT])==0)//若一级目录块未分配,则分配一个新块
-      ip->addrs[NDIRECT] = addr = balloc(ip->dev);//将新块的地址赋值给ip->addrs[NDIRECT]
-    bp1 = bread(ip->dev, addr);//读取该块
-    a1 = (uint*)bp1->data;
+      ip->addrs[NDIRECT] = addr = balloc(ip->dev);//将新块的块号赋值给ip->addrs[NDIRECT]
+    bp1 = bread(ip->dev, addr);//从bcache中获取该磁盘块buf结构体
+    a1 = (uint*)bp1->data;//读取该磁盘块数据 buf->data
+    //每个数据块地址长度为4字节,a1[bn]表示第bn个数据块的地址
     if ((addr=a1[bn])==0) {
       a1[bn] = addr = balloc(ip->dev);
       log_write(bp1);
@@ -435,9 +438,10 @@ itrunc(struct inode *ip)
   struct buf *bp1 , *bp2;
   uint *a1 , *a2 ;
 
+  //直接块直接释放
   for(i = 0; i < NDIRECT; i++){//释放11个直接块
     if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
+      bfree(ip->dev, ip->addrs[i]);//释放inode的直接数据块
       ip->addrs[i] = 0;
     }
   }
@@ -507,8 +511,9 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     n = ip->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE));
-    m = min(n - tot, BSIZE - off%BSIZE);
+    bp = bread(ip->dev, bmap(ip, off/BSIZE));//off/bsize:块号,读取该块
+    //bp为当前数据偏移所在的数据块,bp->data为数据块数据
+    m = min(n - tot, BSIZE - off%BSIZE);//当前还有多少未读 || 当前块还剩多少可读
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
       tot = -1;
@@ -641,7 +646,7 @@ dirlink(struct inode *dp, char *name, uint inum)
 //   skipelem("", name) = skipelem("////", name) = 0
 //
 static char*
-skipelem(char *path, char *name)
+skipelem(char *path, char *name)///a/b/c
 {
   char *s;
   int len;
@@ -650,19 +655,19 @@ skipelem(char *path, char *name)
     path++;//找到第一个非/字符
   if(*path == 0)
     return 0;
-  s = path;//将s指向第一个非/字符
+  s = path;//将s指向第一个非/字符 s=a/b/c
   while(*path != '/' && *path != 0)
     path++;//找到下一个/字符
-  len = path - s;//计算两个/ /间name的长度
+  len = path - s;//计算两个/ /间name的长度  len=1
   if(len >= DIRSIZ)
     memmove(name, s, DIRSIZ);//将name复制到s
   else {
-    memmove(name, s, len);//将name复制到s
-    name[len] = 0;//将name的末尾设置为0
+    memmove(name, s, len);//将name复制到s name=a
+    name[len] = 0;//将name的末尾设置为0 
   }
   while(*path == '/')
     path++;
-  return path;//返回下一个非/字符
+  return path;//返回下一个非/字符 返回b/c
 }
 
 // Look up and return the inode for a path name.
@@ -682,16 +687,16 @@ namex(char *path, int nameiparent, char *name)
   while((path = skipelem(path, name)) != 0){//从path中提取出name  返回下一级目录首地址
     ilock(ip);
     
-    if(ip->type != T_DIR){
+    if(ip->type != T_DIR){//如果ip不是目录,匹配到文件inode返回
       iunlockput(ip);
       return 0;
     }
-    if(nameiparent && *path == '\0'){
+    if(nameiparent && *path == '\0'){//如果nameiparent为1,且path为空,则返回倒数第二级目录,也就是父目录
       // Stop one level early.
       iunlock(ip);
       return ip;//返回倒数第二级目录,也就是父目录
     }
-    if((next = dirlookup(ip, name, 0)) == 0){//取出该目录对应的inode == next
+    if((next = dirlookup(ip, name, 0)) == 0){//取出该目录对应的inode
       iunlockput(ip);
       return 0;
     }
