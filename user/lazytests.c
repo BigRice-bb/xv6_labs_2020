@@ -93,6 +93,41 @@ oom(char *s)
   }
 }
 
+// Force kernel copies to encounter untouched pages after the first page.
+void
+cross_page_copy(char *s)
+{
+  int len = 3 * PGSIZE;
+  char *base = sbrk(10 * PGSIZE);
+  if(base == (char *)-1)
+    exit(1);
+  char *src = (char *)PGROUNDUP((uint64)base);
+  char *dst = src + 4 * PGSIZE;
+  src[0] = 'x'; // Only the first source page is materialized.
+  unlink("lazycopy.tmp");
+  int fd = open("lazycopy.tmp", O_CREATE | O_RDWR);
+  if(fd < 0 || write(fd, src, len) != len)
+    exit(1);
+  close(fd);
+  fd = open("lazycopy.tmp", O_RDONLY);
+  if(fd < 0 || read(fd, dst, len) != len)
+    exit(1);
+  close(fd);
+  unlink("lazycopy.tmp");
+  for(int i = 0; i < len; i++)
+    if(dst[i] != (i == 0 ? 'x' : 0))
+      exit(1);
+
+  // The terminator is in an untouched page: copyinstr must allocate it.
+  char *path = src + 8 * PGSIZE - 1;
+  *path = '/';
+  fd = open(path, O_RDONLY);
+  if(fd < 0)
+    exit(1);
+  close(fd);
+  exit(0);
+}
+
 // run each test in its own process. run returns 1 if child's exit()
 // indicates success.
 int
@@ -130,6 +165,7 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
+    { cross_page_copy, "cross-page copy"},
     { sparse_memory, "lazy alloc"},
     { sparse_memory_unmap, "lazy unmap"},
     { oom, "out of memory"},

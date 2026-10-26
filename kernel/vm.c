@@ -21,33 +21,58 @@ pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc);
 
 
-// touch a lazy-allocated page so it's mapped to an actual physical page.
-void uvmlazytouch(uint64 va) {
+// Materialize one missing page belonging to the current process.
+// Return failure to the caller; usertrap decides whether to kill the process.
+int
+uvmlazytouch(uint64 va)
+{
   struct proc *p = myproc();
+  if(!uvmshouldtouch(va))
+    return -1;
+
   char *mem = kalloc();
-  if(mem == 0) {
-    // failed to allocate physical memory
-    printf("lazy alloc: out of memory\n");
-    p->killed = 1;
-  } else {
-    memset(mem, 0, PGSIZE);
-    if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
-      printf("lazy alloc: failed to map page\n");
-      kfree(mem);
-      p->killed = 1;
-    }
+  if(mem == 0)
+    return -1;
+  memset(mem, 0, PGSIZE);
+  if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE,
+              (uint64)mem, PTE_R | PTE_W | PTE_U) != 0){
+    kfree(mem);
+    return -1;
   }
-  // printf("lazy alloc: %p, p->sz: %p\n", PGROUNDDOWN(va), p->sz);
+  return 0;
 }
 
-// whether a page is previously lazy-allocated and needed to be touched before use.
-int uvmshouldtouch(uint64 va) {
-  pte_t *pte;
+// Existing valid entries (including the U=0 guard page) are never repaired.
+int
+uvmshouldtouch(uint64 va)
+{
   struct proc *p = myproc();
-  
-  return va < p->sz // within size of memory for the process
-    && PGROUNDDOWN(va) != r_sp() // not accessing stack guard page (it shouldn't be mapped)
-    && (((pte = walk(p->pagetable, va, 0))==0) || ((*pte & PTE_V)==0)); // page table entry does not exist
+  pte_t *pte;
+  if(p == 0 || va >= MAXVA || va >= p->sz)
+    return 0;
+  pte = walk(p->pagetable, va, 0);
+  return pte == 0 || (*pte & PTE_V) == 0;
+}
+
+// Resolve each page separately. exec may supply a new, already populated
+// page table: lazy allocation is only allowed in the current process's table.
+static uint64
+copyaddr(pagetable_t pagetable, uint64 va, int write)
+{
+  struct proc *p = myproc();
+  pte_t *pte;
+  if(va >= MAXVA)
+    return 0;
+  pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0){
+    if(p == 0 || pagetable != p->pagetable || uvmlazytouch(va) < 0)
+      return 0;
+    pte = walk(pagetable, va, 0);
+  }
+  int perm = PTE_V | PTE_U | (write ? PTE_W : PTE_R);
+  if(pte == 0 || (*pte & perm) != perm)
+    return 0;
+  return PTE2PA(*pte);
 }
 
 /*
@@ -394,12 +419,10 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-  if(uvmshouldtouch(dstva))
-    uvmlazytouch(dstva);
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = copyaddr(pagetable, dstva, 1);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
@@ -421,12 +444,10 @@ int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   uint64 n, va0, pa0;
-  if(uvmshouldtouch(srcva))
-    uvmlazytouch(srcva);
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = copyaddr(pagetable, srcva, 0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
@@ -453,7 +474,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = copyaddr(pagetable, srcva, 0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);

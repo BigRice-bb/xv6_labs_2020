@@ -41,16 +41,23 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
+  uint64 addr;
   int n;
   struct proc *p = myproc();
   if(argint(0, &n) < 0)
     return -1;
   addr = p->sz;
-  if(n < 0) {
-    uvmdealloc(p->pagetable, p->sz, p->sz+n); // 如果是缩小空间，则马上释放
+  if(n >= 0){
+    if((uint64)n > MAXVA - p->sz)
+      return -1;
+    p->sz += n;
+  } else {
+    // Widen before negating so INT_MIN is handled without signed overflow.
+    uint64 shrink = -(long)n;
+    if(shrink > p->sz)
+      return -1;
+    p->sz = uvmdealloc(p->pagetable, p->sz, p->sz - shrink);
   }
-  p->sz += n; // 懒分配
   return addr;
 }
 
