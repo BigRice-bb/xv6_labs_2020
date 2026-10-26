@@ -305,90 +305,61 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
-// int
-// uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
-// {
-//   pte_t *pte;
-//   uint64 pa, i;
-//   uint flags;
-//   char *mem;
-
-//   for(i = 0; i < sz; i += PGSIZE){
-//     if((pte = walk(old, i, 0)) == 0)
-//       panic("uvmcopy: pte should exist");
-//     if((*pte & PTE_V) == 0)
-//       panic("uvmcopy: page not present");
-//     pa = PTE2PA(*pte);
-//     flags = PTE_FLAGS(*pte);
-//     if((mem = kalloc()) == 0)
-//       goto err;
-//     memmove(mem, (char*)pa, PGSIZE);
-//     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-//       kfree(mem);
-//       goto err;
-//     }
-//   }
-//   return 0;
-
-//  err:
-//   uvmunmap(new, 0, i / PGSIZE, 1);
-//   return -1;
-// }
+// Share data pages; only originally writable pages become COW.
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
-//我现在只需要将父进程的物理页映射给子进程  不需要分配新的内存空间
-//1,找到父进程物理页 
-//2,清除PTE的写标志
-//3,将父进程物理页映射到子进程
-
-  pte_t *pte;
-  uint64 pa, i;
-  uint flags;
-  //char *mem;
-  //从0开始  分配新的内存  复制old的内存  将new映射到新的内存
+  uint64 i;
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)//没找到PTE
-      panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)//pte无效,没有完成映射
-      panic("uvmcopy: page not present");
-    //上面两个if用于找到根PTE 存在&有实际物理映射
-    pa = PTE2PA(*pte);//1 完成
-    *pte&=~(PTE_W);//2 完成
-    flags = PTE_FLAGS(*pte);
-    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){//3,完成
-      //kfree(mem);
-      //goto err;
-      uvmunmap(new, 0, i / PGSIZE, 1);  // 清理已分配的页表
-      return -1;  //映射失败
-    }
-    // 增加物理页引用计数
-    krefpage((void*)pa);
+    pte_t *pte = walk(old, i, 0);
+    if(pte == 0 || (*pte & PTE_V) == 0)
+      panic("uvmcopy: missing page");
+    uint64 pa = PTE2PA(*pte);
+    uint flags = PTE_FLAGS(*pte);
+    if((flags & PTE_U) && (flags & PTE_W))
+      flags = (flags & ~PTE_W) | PTE_COW;
+    if(mappages(new, i, PGSIZE, pa, flags) != 0)
+      goto err;
+    krefpage((void *)pa);
+    *pte = PA2PTE(pa) | flags;
+  }
+  sfence_vma();
+  return 0;
 
-//     flags = PTE_FLAGS(*pte);//提取出10位标志
-//     if((mem = kalloc()) == 0)
-//       goto err;
-//     memmove(mem, (char*)pa, PGSIZE);
-//     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-//       kfree(mem);
-//       goto err;
-//     }
-   }
-   return 0;
-
-//  err:
-//   uvmunmap(new, 0, i / PGSIZE, 1);
-//   return -1;
-  
+err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  // Earlier parent pages can safely remain COW even if fork fails.
+  sfence_vma();
+  return -1;
 }
 
-
+// Caller owns this page table. No other thread modifies its PTE concurrently.
+int
+cowresolve(pagetable_t pagetable, uint64 va)
+{
+  if(va >= MAXVA)
+    return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & (PTE_V | PTE_U | PTE_COW)) !=
+                         (PTE_V | PTE_U | PTE_COW) || (*pte & PTE_W))
+    return -1;
+  uint64 pa = PTE2PA(*pte);
+  uint flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+  // With one owner, no other process can acquire this page without us.
+  if(krefcount(pa) == 1){
+    *pte = PA2PTE(pa) | flags;
+    sfence_vma();
+    return 0;
+  }
+  char *mem = kalloc();
+  if(mem == 0)
+    return -1;
+  memmove(mem, (void *)pa, PGSIZE);
+  *pte = PA2PTE(mem) | flags;
+  sfence_vma();
+  kfree((void *)pa);
+  return 0;
+}
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -413,27 +384,20 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if(dstva >= MAXVA)
+      return -1;
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(pte && (*pte & PTE_COW)){
+      if(cowresolve(pagetable, va0) < 0)
+        return -1;
+      pte = walk(pagetable, va0, 0);
+    }
+    if(pte == 0 || (*pte & (PTE_V | PTE_U | PTE_W)) !=
+                          (PTE_V | PTE_U | PTE_W))
+      return -1;
     pa0 = walkaddr(pagetable, va0);//获取目标物理地址
     if(pa0 == 0)
       return -1;
-    
-    // 检查是否是COW页面，如果是则处理COW
-    pte_t *pte = walk(pagetable, va0, 0);
-    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
-      // COW页面：分配新页并复制内容
-      char *mem = kalloc();
-      if(mem == 0)
-        return -1;
-      
-      memmove(mem, (char*)pa0, PGSIZE);
-      // 只修改当前进程的PTE，不影响其他进程
-      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
-      kunrefpage((void*)pa0);  // 减少原页的引用计数
-      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
-      
-      // 更新物理地址为新分配的页
-      pa0 = (uint64)mem;
-    }
     
     n = PGSIZE - (dstva - va0);
     if(n > len)
@@ -460,24 +424,6 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
-    
-    // 检查是否是COW页面，如果是则处理COW
-    pte_t *pte = walk(pagetable, va0, 0);
-    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
-      // COW页面：分配新页并复制内容
-      char *mem = kalloc();
-      if(mem == 0)
-        return -1;
-      
-      memmove(mem, (char*)pa0, PGSIZE);
-      // 只修改当前进程的PTE，不影响其他进程
-      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
-      kunrefpage((void*)pa0);  // 减少原页的引用计数
-      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
-      
-      // 更新物理地址为新分配的页
-      pa0 = (uint64)mem;
-    }
     
     n = PGSIZE - (srcva - va0);//va0--srcva--PGSIZE 
     if(n > len)
@@ -506,24 +452,6 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
-    
-    // 检查是否是COW页面，如果是则处理COW
-    pte_t *pte = walk(pagetable, va0, 0);
-    if(pte && (*pte & PTE_V) && !(*pte & PTE_W) && (*pte & PTE_U)){
-      // COW页面：分配新页并复制内容
-      char *mem = kalloc();
-      if(mem == 0)
-        return -1;
-      
-      memmove(mem, (char*)pa0, PGSIZE);
-      // 只修改当前进程的PTE，不影响其他进程
-      *pte = PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W;
-      kunrefpage((void*)pa0);  // 减少原页的引用计数
-      // 注意：kalloc已经将新页的引用计数设为1，这里不需要再调用krefpage
-      
-      // 更新物理地址为新分配的页
-      pa0 = (uint64)mem;
-    }
     
     n = PGSIZE - (srcva - va0);
     if(n > max)

@@ -4,6 +4,7 @@
 
 #include "kernel/types.h"
 #include "kernel/memlayout.h"
+#include "kernel/riscv.h"
 #include "user/user.h"
 
 // allocate more than half of physical memory,
@@ -177,6 +178,46 @@ filetest()
   printf("ok\n");
 }
 
+// Kernel copyout must resolve each COW page of a crossing buffer.
+void
+crosspagetest(void)
+{
+  printf("crosspage: ");
+  char *base = sbrk(3 * PGSIZE);
+  if(base == (char *)-1)
+    exit(1);
+  char *buf = (char *)PGROUNDUP((uint64)base) + PGSIZE - 16;
+  for(int i = 0; i < 32; i++)
+    buf[i] = 'a';
+  int pid = fork();
+  if(pid < 0)
+    exit(1);
+  if(pid == 0){
+    int fds[2];
+    char data[32];
+    for(int i = 0; i < 32; i++)
+      data[i] = 'b';
+    if(pipe(fds) < 0 || write(fds[1], data, 32) != 32 ||
+       read(fds[0], buf, 32) != 32)
+      exit(1);
+    for(int i = 0; i < 32; i++)
+      if(buf[i] != 'b')
+        exit(1);
+    close(fds[0]);
+    close(fds[1]);
+    exit(0);
+  }
+  int status;
+  if(wait(&status) < 0 || status != 0)
+    exit(1);
+  for(int i = 0; i < 32; i++)
+    if(buf[i] != 'a')
+      exit(1);
+  if(sbrk(-3 * PGSIZE) == (char *)-1)
+    exit(1);
+  printf("ok\n");
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -190,6 +231,7 @@ main(int argc, char *argv[])
   threetest();
 
   filetest();
+  crosspagetest();
 
   printf("ALL COW TESTS PASSED\n");
 

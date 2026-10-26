@@ -21,7 +21,7 @@ struct run {
 // 物理页引用计数结构
 struct {
   struct spinlock lock;//加锁  每次只能有一个进程改变物理页引用计数
-  int refcount[PHYSTOP / PGSIZE];  // 每个物理页的引用计数
+  int refcount[(PHYSTOP - KERNBASE) / PGSIZE];  // 每个物理页的引用计数
 } kref;
 
 struct {
@@ -33,7 +33,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  initlock(&kref.lock, "kref");//初始化引用计数的信号量
+  initlock(&kref.lock, "kref"); // protect physical-page reference counts
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -42,40 +42,42 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    kref.refcount[((uint64)p - KERNBASE) / PGSIZE] = 1;
     kfree(p);
+  }
 }
 
-// 增加物理页引用计数
+// All references are acquired from an existing live owner.
 void
 krefpage(void *pa)
 {
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-    return;
-  
+  if((uint64)pa % PGSIZE || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("krefpage: address");
   acquire(&kref.lock);
-  kref.refcount[(uint64)pa / PGSIZE]++;//物理页数组对应的物理页引用计数++
+  int idx = ((uint64)pa - KERNBASE) / PGSIZE;
+  if(kref.refcount[idx] < 1)
+    panic("krefpage");
+  kref.refcount[idx]++;
   release(&kref.lock);
 }
 
-// 减少物理页引用计数，如果计数为0则释放
+int
+krefcount(uint64 pa)
+{
+  if(pa % PGSIZE || pa < (uint64)end || pa >= PHYSTOP)
+    panic("krefcount: address");
+  acquire(&kref.lock);
+  int count = kref.refcount[(pa - KERNBASE) / PGSIZE];
+  release(&kref.lock);
+  return count;
+}
+
+// Compatibility name: every kfree now releases exactly one reference.
 void
 kunrefpage(void *pa)
 {
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-    return;
-  
-  acquire(&kref.lock);
-  int idx = (uint64)pa / PGSIZE;
-  if(kref.refcount[idx] > 0) {
-    kref.refcount[idx]--;
-    if(kref.refcount[idx] == 0) {
-      release(&kref.lock);
-      kfree(pa);//若引用计数减为0 释放内存
-      return;
-    }
-  }
-  release(&kref.lock);
+  kfree(pa);
 }
 
 // Free the page of physical memory pointed at by v,
@@ -89,6 +91,16 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&kref.lock);
+  int idx = ((uint64)pa - KERNBASE) / PGSIZE;
+  if(kref.refcount[idx] < 1)
+    panic("kfree: refcount");
+  if(--kref.refcount[idx] > 0){
+    release(&kref.lock);
+    return;
+  }
+  release(&kref.lock);
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -120,7 +132,7 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
     // 初始化引用计数为1
     acquire(&kref.lock);
-    kref.refcount[(uint64)r / PGSIZE] = 1;
+    kref.refcount[((uint64)r - KERNBASE) / PGSIZE] = 1;
     release(&kref.lock);
   }
   return (void*)r;
